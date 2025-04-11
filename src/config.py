@@ -3,9 +3,10 @@
 import os
 
 # Dashboard settings
-TITLE = "IoT-Based Genset Monitoring System"
+TITLE = "IoT Genset Monitor"
 THEME = "dark"
-
+LOG_DIR = "logs" # Or any directory you prefer
+  
 # Simulated Data Settings
 SIMULATION_INTERVAL = 5  # seconds
 

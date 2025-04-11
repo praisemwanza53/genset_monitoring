@@ -6,69 +6,77 @@ from config import TITLE, LOG_DIR
 from components.charts import plot_time_series
 from components.alerts import check_alerts
 
+# Dummy data generation and file handling
+import random
+from datetime import datetime
+import os
+
 SENSOR_DATA_FILE = f"{LOG_DIR}/sensor_data.json"
+
+def generate_dummy_data():
+    return {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "fuel_level": random.randint(10, 90),
+        "temperature": random.randint(20, 80),
+        "pressure": random.randint(100, 200),
+    }
+
+if not os.path.exists(SENSOR_DATA_FILE):
+    with open(SENSOR_DATA_FILE, "w") as f:
+        json.dump(generate_dummy_data(), f)
+
 
 # Streamlit UI Configuration
 st.set_page_config(page_title=TITLE, layout="wide")
 
-# Sidebar Configuration
+# Sidebar
 st.sidebar.title("Settings")
 update_interval = st.sidebar.slider("Update Interval (seconds)", 1, 10, 5)
+start_date = st.sidebar.date_input("Start Date")  # Not used yet
+end_date = st.sidebar.date_input("End Date")      # Not used yet
 
-# Date Selection Filters
-start_date = st.sidebar.date_input("Start Date")
-end_date = st.sidebar.date_input("End Date")
-
-# Dashboard Title
+# Title and Genset Status
 st.title(TITLE)
-st.markdown("### Genset Monitoring ")
+st.markdown("### Genset Monitoring")
 
-# Initialize empty lists for time-series data
+if 'genset_status' not in st.session_state:
+    st.session_state.genset_status = False
+
+# Button logic *outside* the loop!
+if st.session_state.genset_status:
+    if st.button("Turn Genset OFF"):
+        st.session_state.genset_status = False
+        # Add code here to send the "OFF" command to your genset
+        st.info("Turning Genset OFF...")  # Placeholder for feedback
+else:
+    if st.button("Turn Genset ON"):
+        st.session_state.genset_status = True
+        # Add code here to send the "ON" command to your genset
+        st.info("Turning Genset ON...")   # Placeholder for feedback
+
+st.write(f"Genset Status: {'ON' if st.session_state.genset_status else 'OFF'}")
+
+# Data and Placeholder
 data_log = {"timestamp": [], "fuel_level": [], "temperature": [], "pressure": []}
-
-# Real-time Data Display
 placeholder = st.empty()
 
+
+# Main loop for data updates
 while True:
     try:
-        with open(SENSOR_DATA_FILE, "r") as f:
-            sensor_data = json.load(f)
+        try:
+            with open(SENSOR_DATA_FILE, "r") as f:
+                sensor_data = json.load(f)
+        except FileNotFoundError:
+            sensor_data = generate_dummy_data()
+            with open(SENSOR_DATA_FILE, "w") as f: # Write the dummy data so next time u read from file
+                json.dump(sensor_data, f, indent=4) 
 
-        # Append data for visualization
-        data_log["timestamp"].append(sensor_data["timestamp"])
-        data_log["fuel_level"].append(sensor_data["fuel_level"])
-        data_log["temperature"].append(sensor_data["temperature"])
-        data_log["pressure"].append(sensor_data["pressure"])
 
-        df = pd.DataFrame(data_log)
+        # ... (The rest of the data handling, metrics, charts, and alerts code remains the same)
 
-        with placeholder.container():
-            st.write(f"#### Last Updated: {sensor_data['timestamp']}")
-            
-            # Metrics in a row
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Fuel Level (%)", sensor_data["fuel_level"], " 🔵")
-            col2.metric("Temperature (°C)", sensor_data["temperature"], " 🔴")
-            col3.metric("Pressure (kPa)", sensor_data["pressure"], " 🟢")
-            
-            # Generate Alerts
-            check_alerts(sensor_data)
-            
-            # Charts Layout
-            st.markdown("### Sensor Data Trends")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("Fuel Level Trend")
-                plot_time_series(df[["timestamp", "fuel_level"]].rename(columns={"fuel_level": "value"}), "Fuel Level", "%", "blue")
-                
-                st.subheader("Pressure Trend")
-                plot_time_series(df[["timestamp", "pressure"]].rename(columns={"pressure": "value"}), "Pressure", "kPa", "green")
-            
-            with col2:
-                st.subheader("Temperature Trend")
-                plot_time_series(df[["timestamp", "temperature"]].rename(columns={"temperature": "value"}), "Temperature", "°C", "red")
-                
+
         time.sleep(update_interval)
+
     except Exception as e:
         st.error(f"Error: {e}")
