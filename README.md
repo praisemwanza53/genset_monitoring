@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # GENSET\_MONITORING
 
 ## Overview
@@ -179,3 +180,23 @@ Feel free to fork this project, submit pull requests, or open issues for bugs an
 ## License
 
 This project is licensed under the MIT License.
+=======
+# IoT Genset Monitor (Streamlit App)
+
+## Description
+
+This project is a Streamlit web application designed to monitor key parameters of an Internet of Things (IoT) enabled generator set (Genset). It simulates reading sensor data (Fuel Level, Temperature, Pressure), stores this data persistently in an SQLite database, and provides a user interface to visualize current and historical readings, check for alerts, and simulate control actions (turning the Genset ON/OFF).
+
+The application is currently set up for demonstration using dummy data generation but is structured to be adapted for real sensor input and hardware control. The monitoring context includes a specific location: Kitwe, Zambia.
+
+## Features
+
+* **Dashboard Display:** Shows the latest readings for Fuel Level (%), Temperature (°C), and Pressure (psi).
+* **Historical Data Visualization:** Plots sensor readings over time using interactive Plotly charts.
+* **Date Range Filtering:** Allows users to select a start and end date in the sidebar to view historical data for specific periods.
+* **Database Storage:** Uses SQLite (`genset_data.db` located in `logs/`) for persistent storage of time-series sensor data.
+* **Alert System:** Checks the latest readings against predefined thresholds (configurable in `src/components/alerts.py`) and displays warnings (e.g., Low Fuel, High Temperature).
+* **Simulated Control:** Buttons to simulate turning the Genset ON or OFF (requires integration with actual hardware control logic).
+* **Dummy Data Generation:** Includes a button to manually generate and store simulated sensor data for testing and demonstration.
+* **AI Prediction Placeholder:** Includes a dedicated section in the UI prepared for integrating an AI/ML model to predict future fuel levels.
+
