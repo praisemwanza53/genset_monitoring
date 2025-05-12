@@ -17,11 +17,11 @@ from dotenv import load_dotenv
 os.makedirs(LOG_DIR, exist_ok=True)
 DB_FILE = f"{LOG_DIR}/genset_data.db"
 
-# --- Groq API Setup ---
-load_dotenv()  # Load variables from .env file
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "default-fallback-key")  # Fallback for testing
-client = groq.Groq(api_key=GROQ_API_KEY)
 
+# --- Groq API Setup ---
+load_dotenv()  # Keep this if you still want local .env support
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", st.secrets.get("groq", {}).get("api_key", "default-fallback-key"))
+client = groq.Groq(api_key=GROQ_API_KEY)
 # --- Database Functions ---
 def db_connect():
     """Establishes a connection to the SQLite database."""
