@@ -7,22 +7,20 @@ from config import TITLE, LOG_DIR
 from components.charts import plot_time_series
 from components.alerts import check_alerts
 import os
-import google.generativeai as genai  # For Gemini API
+import groq  # For Groq API
 import folium
 from streamlit_folium import st_folium
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-import google.api_core.exceptions
 from dotenv import load_dotenv
 
 # --- Configuration ---
 os.makedirs(LOG_DIR, exist_ok=True)
 DB_FILE = f"{LOG_DIR}/genset_data.db"
 
-# --- Gemini API Setup ---
+# --- Groq API Setup ---
 load_dotenv()  # Load variables from .env file
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "default-fallback-key")  # Fallback for testing
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "default-fallback-key")  # Fallback for testing
+client = groq.Groq(api_key=GROQ_API_KEY)
 
 # --- Database Functions ---
 def db_connect():
@@ -116,36 +114,58 @@ def db_get_data(start_dt=None, end_dt=None):
         st.error(f"Database query error: {e}")
         return pd.DataFrame(columns=['timestamp', 'fuel_level', 'temperature', 'pressure', 'latitude', 'longitude'])
 
-# --- AI Prediction with Gemini API ---
+# --- AI Prediction with Groq API ---
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=32),
-    retry=retry_if_exception_type(google.api_core.exceptions.ResourceExhausted)
+    retry=retry_if_exception_type(Exception)
 )
-def predict_with_gemini(data: pd.Series):
-    """Uses Gemini API to predict if sensor data is within safe ranges."""
-    prompt = f"""
-    Analyze: Fuel {data['fuel_level']:.1f}% (Safe: 20-100%), Temp {data['temperature']:.1f}°C (Safe: <70°C), Pressure {data['pressure']:.1f} psi (Safe: 120-180 psi). Return Status (Safe/Unsafe) and Maintenance (parameters needing maintenance or None).
-    """
+def predict_with_groq(data: pd.Series):
+    """Uses Groq API to provide tailored responses based on sensor data."""
+    fuel_level = data['fuel_level']
+    temperature = data['temperature']
+    pressure = data['pressure']
+    fuel_safe = 20 <= fuel_level <= 100
+    temp_safe = temperature < 70
+    press_safe = 120 <= pressure <= 180
+
+    # Dynamic prompt based on sensor conditions
+    prompt = "You are an AI assistant for a genset monitoring system. Analyze the following sensor data and provide a detailed response:\n"
+    prompt += f"- Fuel Level: {fuel_level:.1f}% (Safe range: 20-100%)\n"
+    prompt += f"- Temperature: {temperature:.1f}°C (Safe range: <70°C)\n"
+    prompt += f"- Pressure: {pressure:.1f} psi (Safe range: 120-180 psi)\n"
+    prompt += "Based on the data, provide a status (Safe or Unsafe) and a detailed recommendation. If any parameter is out of range:\n"
+    prompt += "- For low fuel (<20%), suggest refueling and monitoring usage.\n"
+    prompt += "- For high fuel (>100%), warn of a sensor error and recommend inspection.\n"
+    prompt += "- For high temperature (>=70°C), suggest cooling the system and checking for overheating.\n"
+    prompt += "- For low pressure (<120 psi), recommend checking the pressure system.\n"
+    prompt += "- For high pressure (>180 psi), advise immediate shutdown and inspection.\n"
+    prompt += "If all parameters are safe, offer a positive remark."
+
     try:
-        response = model.generate_content(prompt)
-        lines = response.text.split('\n')
-        status = lines[0].split(": ")[1].strip() if "Status" in lines[0] else "Unknown"
-        maintenance = lines[1].split(": ")[1].strip() if "Maintenance" in lines[1] else "None"
-        return status, maintenance
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        ai_response = response.choices[0].message.content.strip()
+        # Parse the response to extract status and recommendation
+        lines = ai_response.split('\n')
+        status = "Safe" if "Safe" in ai_response else "Unsafe"
+        recommendation = ai_response.split("Recommendation:")[-1].strip() if "Recommendation:" in ai_response else ai_response
+        return status, recommendation
     except Exception as e:
-        st.error(f"Error with Gemini API: {e}")
+        st.error(f"Error with Groq API: {e}")
         # Fallback: Manual check if API fails
         issues = []
-        if data['fuel_level'] < 20 or data['fuel_level'] > 100:
-            issues.append("Fuel Level")
-        if data['temperature'] > 70:
-            issues.append("Temperature")
-        if data['pressure'] < 120 or data['pressure'] > 180:
-            issues.append("Pressure")
+        if not fuel_safe:
+            issues.append("Fuel Level" + (" (refuel and monitor)" if fuel_level < 20 else " (sensor error, inspect)"))
+        if not temp_safe:
+            issues.append("Temperature (cool system, check overheating)")
+        if not press_safe:
+            issues.append("Pressure" + (" (check pressure system)" if pressure < 120 else " (shutdown, inspect)"))
         status = "Unsafe" if issues else "Safe"
-        maintenance = ", ".join(issues) if issues else "None"
-        return status, maintenance
+        recommendation = ", ".join(issues) if issues else "All systems are operating normally."
+        return status, recommendation
 
 # --- Map Visualization ---
 def display_map(df_data, key_prefix="map"):
@@ -336,26 +356,26 @@ with map_container:
     st.markdown("### Genset Location")
     display_map(df_data, key_prefix="map")
 
-# AI Prediction with Gemini
+# AI Prediction with Groq
 prediction_container = st.container()
 with prediction_container:
     st.markdown("---")
     st.markdown("### AI Sensor Health Prediction")
     if not df_data.empty:
-        status, maintenance = predict_with_gemini(latest_data)
+        status, recommendation = predict_with_groq(df_data.iloc[-1])  # Use latest row for prediction
         if status == "Safe":
-            st.success("✅ All parameters are within safe ranges.")
+            st.success("✅ " + recommendation)
         else:
-            st.error(f"⚠️ Unsafe parameters detected! Maintenance needed for: {maintenance}")
+            st.error("⚠️ " + recommendation)
 
-        # Use st.empty() to manage the table and update it only with new data
+        # Display the latest 5 readings in a table
         table_placeholder = st.empty()
         with table_placeholder:
             if new_data or st.session_state.last_timestamp is None:
-                st.dataframe(df_data.tail().round(2), key=f"ai_data_{latest_timestamp}")
+                st.dataframe(df_data.tail(5).round(2), use_container_width=True, key=f"ai_data_{latest_timestamp}")
             elif st.session_state.last_timestamp is not None:
                 # Display the last rendered table if no new data
-                st.dataframe(df_data.tail().round(2), key=f"ai_data_{st.session_state.last_timestamp}")
+                st.dataframe(df_data.tail(5).round(2), use_container_width=True, key=f"ai_data_{st.session_state.last_timestamp}")
     else:
         st.write("No data for AI prediction.")
 
@@ -363,4 +383,4 @@ with prediction_container:
 current_time = time.time()
 if current_time - st.session_state.last_update >= update_interval:
     st.session_state.last_update = current_time
-    st.experimental_rerun()
+    st.rerun()  # Updated from st.experimental_rerun()

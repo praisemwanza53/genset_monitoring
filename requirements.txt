@@ -6,7 +6,8 @@ seaborn==0.13.2
 streamlit==1.44.0
 streamlit-folium==0.25.0
 folium==0.18.0
-google-generativeai==0.8.3
+groq==0.9.0
+httpx==0.27.2  # Add this line to pin a compatible version
 tenacity==9.0.0
 python-dotenv==1.0.1
 requests==2.32.3
