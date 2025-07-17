@@ -1,0 +1,58 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+env/
+venv/
+ENV/
+.venv/
+
+# VS Code settings
+.vscode/
+
+# Logs
+*.log
+logs/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Python environment files
+*.env
+.env
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Compiled files
+*.egg
+*.egg-info/
+dist/
+build/
+
+# PyInstaller
+*.spec
+
+# Reports and temporary files
+reports/
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Test coverage
+.coverage
+htmlcov/
+.tox/
+.nox/
+.cache/
+coverage.xml
+
+# GitHub-specific
+*.DS_Store
+ 
