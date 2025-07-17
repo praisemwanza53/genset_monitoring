@@ -21,6 +21,9 @@ DB_FILE = os.environ.get("DATABASE_PATH", os.path.join(os.getcwd(), "logs", "gen
 relay_state = False  # False=OFF, True=ON
 buzzer_alert = False # True if AI alert should trigger buzzer
 
+# Ensure logs directory exists before configuring logging
+os.makedirs('logs', exist_ok=True)
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
