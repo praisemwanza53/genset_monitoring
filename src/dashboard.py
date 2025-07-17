@@ -214,3 +214,6 @@ with prediction_container:
             st.success("✅ " + recommendation)
         else:
             st.error("⚠️ " + recommendation)
+
+# Add this line to auto-refresh every 3 seconds (3000 ms)
+st_autorefresh(interval=3000, key="datarefresh")
