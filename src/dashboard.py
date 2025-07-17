@@ -141,7 +141,8 @@ with charts_container:
 # Real-time Data Table
 st.markdown("### 📋 Real-time Data Table")
 if not historical_df.empty:
-    latest_readings = historical_df.tail(10).copy()
+    # Show the latest 10 readings, most recent at the top
+    latest_readings = historical_df.sort_values('timestamp', ascending=False).head(10).iloc[::-1].copy()
     display_data = latest_readings[['timestamp', 'fuel_level', 'temperature']].copy()
     display_data['timestamp'] = pd.to_datetime(display_data['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
     display_data['fuel_level'] = display_data['fuel_level'].round(1).astype(str) + '%'

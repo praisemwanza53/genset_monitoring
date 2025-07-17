@@ -12,7 +12,7 @@ from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-from utils.database import init_database, insert_sensor_data, get_latest_data
+from src.utils.database import init_database, insert_sensor_data, get_latest_data
 
 # Define DB_FILE for database path
 DB_FILE = os.environ.get("DATABASE_PATH", os.path.join(os.getcwd(), "logs", "genset_data.db"))
