@@ -131,6 +131,101 @@ python src/simulate.py
 python src/check_db.py
 ```
 
+## 🧠 System Technical Overview & Sensor Calibration
+
+### ESP32 Firmware: How It Works
+The ESP32 firmware (see `ESP32_Genset_Monitor.ino`) is responsible for:
+- Reading temperature (NTC thermistor) and fuel level (ultrasonic sensor)
+- Displaying data on an OLED screen
+- Serving a local web interface for status and control
+- Sending sensor data to the API server via HTTP POST
+- Fetching remote commands (relay/buzzer) from the API server
+- Handling WiFi connectivity and automatic reconnection
+
+#### Main Loop
+- Reads sensors every 3 seconds
+- Displays values on OLED
+- Pushes data to the API server
+- Fetches remote control commands
+- Handles local web requests (for relay, buzzer, sensor data)
+
+#### Endpoints Served by ESP32
+- `/` — Status message
+- `/relay/on` and `/relay/off` — Control relay
+- `/sensors` — Get current sensor readings (JSON)
+- `/notify` — Trigger buzzer alert
+
+### Sensor Calibration & Calculations
+
+#### 1. Temperature (NTC Thermistor)
+- **Wiring:** NTC thermistor in a voltage divider with a 10kΩ series resistor.
+- **Analog Read:** Reads voltage at the divider using ADC (0–4095 scale).
+- **Calculation:**
+  - Converts ADC value to voltage:  
+    `voltage = adcValue * 3.3 / 4095`
+  - Calculates thermistor resistance:  
+    `resistance = (voltage * 10,000) / (3.3 - voltage)`
+  - Applies the Steinhart-Hart equation:
+    ```
+    steinhart = resistance / 10,000.0;
+    steinhart = log(steinhart);
+    steinhart /= 3950.0; // B coefficient
+    steinhart += 1.0 / (25.0 + 273.15); // 25°C nominal
+    steinhart = 1.0 / steinhart;
+    steinhart -= 273.15;
+    ```
+  - **Calibration:**
+    - The constants (10kΩ, 3950 B, 25°C nominal) are for a typical 10k NTC thermistor. For best accuracy, calibrate by comparing readings to a reference thermometer and adjusting the B value or nominal resistance as needed.
+    - If readings are off, measure resistance at a known temperature and update the constants.
+
+#### 2. Fuel Level (Ultrasonic Sensor)
+- **Wiring:** TRIG and ECHO pins to ESP32, sensor mounted above fuel tank.
+- **Measurement:**
+  - Sends a 10μs pulse, measures echo return time.
+  - Converts time to distance:  
+    `distance = duration * 0.034 / 2.0` (cm)
+  - **Calibration:**
+    - The code maps 10cm (full) to 40cm (empty):
+      `fuelLevel = map(distance, 10, 40, 100, 0)`
+    - Adjust 10 and 40 to match your tank's actual full/empty distances.
+    - The result is rounded to the nearest 5% for stability.
+    - If the sensor reads out of range, 0% is reported.
+
+#### 3. Buzzer & Relay
+- Buzzer is used for alerts (e.g., on WiFi connect, remote notification)
+- Relay can be toggled locally (web) or remotely (API command)
+
+### Data Flow & System Workflow
+
+```mermaid
+graph TD;
+  ESP32["ESP32<br/>Reads Sensors"] --> API["API Server<br/>(Flask)"];
+  API --> DB["SQLite Database"];
+  API --> Dashboard["Streamlit Dashboard"];
+  Dashboard --> API;
+  Dashboard --> AI["Groq AI Analysis"];
+  API -->|Commands| ESP32;
+```
+
+1. **ESP32** reads sensors, displays locally, and sends data to the API server.
+2. **API Server** stores data, provides endpoints for dashboard and ESP32.
+3. **Dashboard** fetches data, visualizes it, and can send control commands.
+4. **AI Analysis** (Groq API) is triggered from the dashboard for advanced insights.
+5. **Remote Control:** Dashboard can send relay/buzzer commands, which ESP32 fetches and executes.
+
+### AI Analysis: How It Works
+- The dashboard integrates with the Groq API for AI-powered analytics.
+- **Capabilities:**
+  - Detects anomalies and trends in temperature/fuel data
+  - Predicts potential issues (e.g., overheating, low fuel)
+  - Generates natural language summaries and recommendations
+- **Workflow:**
+  - User triggers analysis from the dashboard
+  - Data is sent to Groq API
+  - Results are displayed as insights, alerts, or recommendations
+
+---
+
 ## 🔧 ESP32 Setup
 
 ### Hardware Requirements
@@ -171,6 +266,7 @@ const char* api_server_url_cmds = "https://genset-monitoring.onrender.com/api/co
 
 - **Geolocation is by IP address, not GPS.**
 - **A 4.7kΩ pull-up resistor is required on the DHT22 data line.**
+- **See the [System Technical Overview & Sensor Calibration](#system-technical-overview--sensor-calibration) section above for details on sensor wiring, calibration, and calculations.**
 
 ## 🌐 Deployment Options
 
