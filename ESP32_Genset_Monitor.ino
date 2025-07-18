@@ -6,8 +6,8 @@
 #include <math.h>
 
 // Wi-Fi credentials
-const char* ssid = "Io";
-const char* password = "praisemwanza";
+const char* ssid = "";
+const char* password = "";
 
 // API endpoints
 #define USE_LOCAL_API 0
@@ -94,7 +94,10 @@ int getFuelLevel() {
   Serial.println(" cm");
 
   int fuelLevel = map((int)distance, 10, 40, 100, 0);
-  return constrain(fuelLevel, 0, 100);
+  fuelLevel = constrain(fuelLevel, 0, 100);
+  fuelLevel = round(fuelLevel / 5.0) * 5; // Round to nearest 5%
+
+  return fuelLevel;
 }
 
 // --- NTC TEMPERATURE READING ---
@@ -114,7 +117,7 @@ float readNTCTemperature() {
   }
 
   float voltage = adcValue * SUPPLY_VOLTAGE / ADC_MAX;
-  float resistance = SERIES_RESISTOR * ((SUPPLY_VOLTAGE / voltage) - 1);
+  float resistance = (voltage * SERIES_RESISTOR) / (SUPPLY_VOLTAGE - voltage); // Corrected formula
 
   if (resistance <= 0 || resistance > 1000000.0) {
     Serial.println("⚠️ Resistance out of range");
