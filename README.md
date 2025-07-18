@@ -230,7 +230,7 @@ graph TD;
 
 ### Hardware Requirements
 - ESP32 development board
-- DHT22 (temperature/humidity)
+- NTC thermistor (temperature sensor)
 - Ultrasonic sensor (fuel level)
 - Buzzer for alerts
 - Relay for control
@@ -242,7 +242,6 @@ graph TD;
 3. Install required libraries:
    - WiFi
    - HTTPClient
-   - DHT sensor library
    - Adafruit SSD1306 (for OLED)
 
 ### Configuration
@@ -265,7 +264,7 @@ const char* api_server_url_cmds = "https://genset-monitoring.onrender.com/api/co
 ```
 
 - **Geolocation is by IP address, not GPS.**
-- **A 4.7kΩ pull-up resistor is required on the DHT22 data line.**
+- **A 4.7kΩ pull-up resistor is required on the NTC thermistor voltage divider if needed.**
 - **See the [System Technical Overview & Sensor Calibration](#system-technical-overview--sensor-calibration) section above for details on sensor wiring, calibration, and calculations.**
 
 ## 🌐 Deployment Options
