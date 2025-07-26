@@ -182,6 +182,11 @@ with alerts_container:
         st.write("No data for alert checking.")
 
 # AI Prediction with Groq
+if "last_predicted_timestamp" not in st.session_state:
+    st.session_state["last_predicted_timestamp"] = None
+if "last_groq_result" not in st.session_state:
+    st.session_state["last_groq_result"] = ("Unknown", "No prediction yet.")
+
 def predict_with_groq(data: dict, df_history: pd.DataFrame = None):
     fuel_level = data['fuel_level']
     temperature = data['temperature']
@@ -209,7 +214,12 @@ with prediction_container:
     st.markdown("---")
     st.markdown("### AI Sensor Health Prediction")
     if latest_data:
-        status, recommendation = predict_with_groq(latest_data, historical_df)
+        if latest_data.get("timestamp") != st.session_state["last_predicted_timestamp"]:
+            status, recommendation = predict_with_groq(latest_data, historical_df)
+            st.session_state["last_predicted_timestamp"] = latest_data.get("timestamp")
+            st.session_state["last_groq_result"] = (status, recommendation)
+        else:
+            status, recommendation = st.session_state["last_groq_result"]
         if status == "Safe":
             st.success("✅ " + recommendation)
         else:

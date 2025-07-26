@@ -20,7 +20,7 @@ const char* api_server_url_cmds = "https://genset-monitoring.onrender.com/api/co
 #endif
 
 // Sensor Pins
-#define NTC_PIN 34
+#define NTC_PIN 32
 #define TRIG_PIN 12
 #define ECHO_PIN 14
 #define RELAY_PIN 27
