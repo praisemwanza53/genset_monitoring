@@ -25,7 +25,7 @@ if "api_url" not in st.session_state:
     st.session_state["api_url"] = "https://genset-monitoring.onrender.com"
 API_SERVER_URL = st.sidebar.text_input(
     "API Server URL",
-    value=st.session_state["api_url"],
+    value=st.session_state.get("api_url", "https://genset-monitoring.onrender.com"),
     help="Enter the base URL of your API server (e.g., https://genset-monitoring.onrender.com or http://localhost:8000)"
 )
 st.session_state["api_url"] = API_SERVER_URL
@@ -33,26 +33,30 @@ st.session_state["api_url"] = API_SERVER_URL
 # Sidebar controls for relay and buzzer
 st.sidebar.title("Genset Monitoring Controls")
 relay_state = st.sidebar.radio("Relay State", ("ON", "OFF"), index=0 if st.session_state.get('esp32_relay_state', False) else 1)
+relay_notification_placeholder = st.sidebar.empty()
+buzzer_notification_placeholder = st.sidebar.empty()
 if st.sidebar.button("Set Relay State"):
+    relay_notification_placeholder.empty()  # Clear previous notification
     try:
         resp = requests.post(f"{API_SERVER_URL}/api/relay", json={"state": relay_state.lower()})
         if resp.status_code == 200:
-            st.sidebar.success(f"Relay turned {relay_state}")
-            st.session_state.esp32_relay_state = (relay_state == "ON")
+            relay_notification_placeholder.success(f"Relay turned {relay_state}")
+            st.session_state["esp32_relay_state"] = (relay_state == "ON")
         else:
-            st.sidebar.error("Failed to set relay state")
+            relay_notification_placeholder.error("Failed to set relay state")
     except Exception as e:
-        st.sidebar.error(f"Relay control error: {e}")
+        relay_notification_placeholder.error(f"Relay control error: {e}")
 
 if st.sidebar.button("Trigger Buzzer"):
+    buzzer_notification_placeholder.empty()  # Clear previous notification
     try:
         resp = requests.post(f"{API_SERVER_URL}/api/buzzer")
         if resp.status_code == 200:
-            st.sidebar.success("Buzzer triggered!")
+            buzzer_notification_placeholder.success("Buzzer triggered!")
         else:
-            st.sidebar.error("Failed to trigger buzzer")
+            buzzer_notification_placeholder.error("Failed to trigger buzzer")
     except Exception as e:
-        st.sidebar.error(f"Buzzer control error: {e}")
+        buzzer_notification_placeholder.error(f"Buzzer control error: {e}")
 
 # --- Fetch latest and historical data from API ---
 def fetch_latest_data_from_api(api_url):
@@ -80,6 +84,20 @@ def fetch_historical_data_from_api(api_url, limit=100):
         st.error(f"Error fetching historical data from API: {e}")
         return pd.DataFrame()
 
+# --- Fetch relay status from API ---
+def fetch_relay_status_from_api(api_url):
+    try:
+        resp = requests.get(f"{api_url}/api/commands", timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get('relay', 'off').upper()
+        else:
+            st.error(f"API returned status code: {resp.status_code} for relay status")
+            return 'OFF'
+    except Exception as e:
+        st.error(f"Error fetching relay status from API: {e}")
+        return 'OFF'
+
 # --- Main Area: Genset Status and Metrics ---
 st.title(TITLE)
 st.markdown("### Genset Monitoring Dashboard")
@@ -87,6 +105,7 @@ st.caption("🔄 Dashboard auto-refreshes every 3 seconds for live data.")
 
 latest_data = fetch_latest_data_from_api(API_SERVER_URL)
 historical_df = fetch_historical_data_from_api(API_SERVER_URL, limit=100)
+relay_status_api = fetch_relay_status_from_api(API_SERVER_URL)
 
 # Ensure timestamp is parsed and sorted ascending for charts and tables
 if not historical_df.empty and 'timestamp' in historical_df.columns:
@@ -101,8 +120,7 @@ else:
 # --- Display relay and buzzer status ---
 col1, col2 = st.columns(2)
 with col1:
-    relay_status = "ON" if st.session_state.get('esp32_relay_state', False) else "OFF"
-    st.metric("Relay Status", relay_status)
+    st.metric("Relay Status", relay_status_api)
 with col2:
     st.info("Buzzer status available on trigger")
 
