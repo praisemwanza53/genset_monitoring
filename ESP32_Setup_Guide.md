@@ -4,11 +4,11 @@
 
 ### Hardware Required
 - ESP32 Development Board
-- BME280 Temperature/Humidity Sensor
-- GPS Module (NEO-6M or similar)
-- Fuel Level Sensor (Analog)
+- LM75 Temperature Sensor (I2C)
+- Ultrasonic Sensor (HC-SR04 or similar) for fuel level
 - Buzzer Module
-- LED (for status indication)
+- Relay Module
+- OLED Display (SSD1306, 128x64)
 - Jumper wires and breadboard
 
 ### Software Required
@@ -16,39 +16,41 @@
 - Required Libraries (install via Library Manager):
   - WiFi
   - HTTPClient
-  - ArduinoJson (by Benoit Blanchon)
-  - Adafruit BME280 Library
-  - TinyGPS++
+  - Wire (I2C)
+  - Adafruit SSD1306 Library
+  - Adafruit GFX Library
 
 ## Hardware Connections
 
 ### ESP32 Pin Connections
 ```
-BME280 Sensor:
+LM75 Temperature Sensor (I2C):
 - VCC → 3.3V
 - GND → GND
 - SDA → GPIO21
 - SCL → GPIO22
 
-GPS Module:
+Ultrasonic Sensor (HC-SR04):
 - VCC → 3.3V
 - GND → GND
-- TX → GPIO16 (GPS_RX)
-- RX → GPIO17 (GPS_TX)
+- TRIG → GPIO12
+- ECHO → GPIO14
 
-Fuel Sensor:
+OLED Display (SSD1306):
 - VCC → 3.3V
 - GND → GND
-- Signal → GPIO34 (FUEL_SENSOR_PIN)
+- SDA → GPIO21 (shared with LM75)
+- SCL → GPIO22 (shared with LM75)
 
 Buzzer:
 - VCC → 3.3V
 - GND → GND
-- Signal → GPIO25 (BUZZER_PIN)
+- Signal → GPIO26
 
-LED:
-- Anode → GPIO2 (LED_PIN)
-- Cathode → GND (with 220Ω resistor)
+Relay:
+- VCC → 3.3V
+- GND → GND
+- Signal → GPIO27
 ```
 
 ## Configuration Steps
@@ -60,18 +62,28 @@ const char* ssid = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
 ```
 
-### 2. Update Streamlit App URL
-Replace the placeholder with your actual hosted Streamlit app URL:
+### 2. Update API Server URL
+Configure the API server URL for your deployment:
 ```cpp
-const char* streamlit_host = "your-streamlit-app-url.com";  // Your actual URL
-const int streamlit_port = 443;  // Use 443 for HTTPS, 80 for HTTP
+// Set to 1 for local, 0 for hosted
+#define USE_LOCAL_API 0
+
+#if USE_LOCAL_API
+const char* api_server_url_data = "http://YOUR_LOCAL_IP:5000/api/sensor-data";
+const char* api_server_url_cmds = "http://YOUR_LOCAL_IP:5000/api/commands";
+#else
+const char* api_server_url_data = "https://genset-monitoring.onrender.com/api/sensor-data";
+const char* api_server_url_cmds = "https://genset-monitoring.onrender.com/api/commands";
+#endif
 ```
 
 ### 3. Configure Sensor Calibration
-Adjust fuel sensor calibration based on your specific sensor:
+Adjust ultrasonic sensor calibration based on your fuel tank:
 ```cpp
-const float fuel_empty_voltage = 0.5;  // Voltage when fuel tank is empty
-const float fuel_full_voltage = 3.3;   // Voltage when fuel tank is full
+// In getFuelLevel() function, adjust these values:
+int fuelLevel = map((int)distance, 10, 40, 100, 0);
+// 10cm = full tank, 40cm = empty tank
+// Adjust these values based on your tank's actual dimensions
 ```
 
 ## Deployment Options
@@ -79,26 +91,21 @@ const float fuel_full_voltage = 3.3;   // Voltage when fuel tank is full
 ### Option 1: Local Network (Same WiFi)
 If your ESP32 and computer are on the same WiFi network:
 1. Find your computer's local IP address
-2. Update `streamlit_host` to your computer's IP
-3. Set `streamlit_port` to 8501 (Streamlit default)
+2. Update `api_server_url_data` and `api_server_url_cmds` to your computer's IP
+3. Set `USE_LOCAL_API` to 1
 
-### Option 2: Hosted Streamlit App
-For a hosted Streamlit app (Streamlit Cloud, Heroku, etc.):
-1. Deploy your Streamlit app to a hosting service
-2. Update `streamlit_host` to your hosted URL
-3. Ensure your app has the `/api/data` and `/api/buzzer` endpoints
-
-### Option 3: Port Forwarding
-If using a local Streamlit app with port forwarding:
-1. Configure your router to forward port 8501 to your computer
-2. Use your public IP address as `streamlit_host`
-3. Set `streamlit_port` to 8501
+### Option 2: Hosted API Server
+For a hosted API server (Render, Heroku, etc.):
+1. Deploy your API server to a hosting service
+2. Update the API URLs to your hosted server URL
+3. Set `USE_LOCAL_API` to 0
 
 ## Testing the Connection
 
 ### 1. Serial Monitor
 Open Arduino IDE Serial Monitor (115200 baud) to see:
 - WiFi connection status
+- Sensor readings
 - Data transmission logs
 - Error messages
 
@@ -106,14 +113,22 @@ Open Arduino IDE Serial Monitor (115200 baud) to see:
 ```
 Connecting to WiFi: YOUR_WIFI_SSID
 ........
-WiFi connected!
-IP address: 192.168.1.100
-ESP32 Genset Monitor initialized
-Sending data to: http://your-streamlit-app-url.com:443/api/data
-Sending JSON: {"device_id":"ESP32_GENSET_001","timestamp":1234567,"fuel_level":75.5,"temperature":25.3,"humidity":60.2,"latitude":0.0,"longitude":0.0,"altitude":0.0}
-HTTP Response code: 200
-Response: {"status":"success"}
+✅ WiFi Connected!
+IP Address: 192.168.1.100
+🌐 Web server started
+🌡 Temp: 25.5 °C, ⛽ Fuel: 75 %
+Sending payload: {"temperature":25.5,"fuel_level":75}
+HTTP Response: 200
+Response: {"status":"success","message":"Data received and stored"}
 ```
+
+### 3. Local Web Interface
+The ESP32 serves a local web interface accessible at its IP address:
+- `http://ESP32_IP/` — Status message
+- `http://ESP32_IP/sensors` — Get current sensor readings (JSON)
+- `http://ESP32_IP/relay/on` — Turn relay ON
+- `http://ESP32_IP/relay/off` — Turn relay OFF
+- `http://ESP32_IP/notify` — Trigger buzzer
 
 ## Troubleshooting
 
@@ -125,31 +140,31 @@ Response: {"status":"success"}
    - Check signal strength
 
 2. **HTTP Connection Failed**
-   - Verify the Streamlit app URL is correct
-   - Check if the app is running and accessible
+   - Verify the API server URL is correct
+   - Check if the API server is running and accessible
    - Ensure firewall allows the connection
 
 3. **Sensor Reading Errors**
-   - Check wiring connections
-   - Verify sensor addresses (BME280 typically 0x76)
-   - Calibrate fuel sensor voltage range
+   - **LM75:** Check I2C connections and address (default 0x48)
+   - **Ultrasonic:** Verify TRIG/ECHO connections and power supply
+   - **OLED:** Check I2C connections and address (default 0x3C)
 
-4. **GPS Not Working**
-   - Ensure GPS module has clear sky view
-   - Check baud rate (9600)
-   - Verify TX/RX connections
+4. **I2C Issues**
+   - Ensure proper pull-up resistors on SDA/SCL lines
+   - Check for address conflicts between LM75 and OLED
+   - Verify Wire.begin() is called with correct pins
 
 ### Debug Mode
 Add this to the loop() function for detailed debugging:
 ```cpp
 void loop() {
   // Add debug prints
-  Serial.print("Fuel Level: ");
-  Serial.println(readFuelLevel());
   Serial.print("Temperature: ");
-  Serial.println(readTemperature());
-  Serial.print("Humidity: ");
-  Serial.println(readHumidity());
+  Serial.println(temp);
+  Serial.print("Fuel Level: ");
+  Serial.println(fuel);
+  Serial.print("WiFi Status: ");
+  Serial.println(WiFi.status());
   
   // ... rest of the loop
 }
@@ -158,23 +173,25 @@ void loop() {
 ## Security Considerations
 
 1. **WiFi Security**: Use WPA2 or WPA3 encryption
-2. **HTTPS**: Use HTTPS for hosted apps when possible
-3. **API Keys**: Consider adding authentication to your endpoints
-4. **Network Isolation**: Consider using a dedicated network for IoT devices
+2. **HTTPS**: Use HTTPS for hosted API servers when possible
+3. **Network Isolation**: Consider using a dedicated network for IoT devices
+4. **Local Access**: The ESP32 web server is accessible to anyone on the same network
 
 ## Power Requirements
 
 - ESP32: 3.3V, ~200mA peak
-- BME280: 3.3V, ~1mA
-- GPS Module: 3.3V, ~25mA
+- LM75: 3.3V, ~1mA
+- Ultrasonic Sensor: 3.3V, ~15mA
+- OLED Display: 3.3V, ~20mA
 - Buzzer: 3.3V, ~20mA
-- Total: ~250mA peak
+- Relay: 3.3V, ~70mA
+- Total: ~330mA peak
 
 Use a stable 3.3V power supply capable of 500mA or more.
 
 ## Maintenance
 
-1. **Regular Calibration**: Recalibrate fuel sensor monthly
+1. **Regular Calibration**: Recalibrate ultrasonic sensor if fuel tank dimensions change
 2. **Firmware Updates**: Keep Arduino libraries updated
 3. **Hardware Inspection**: Check connections periodically
 4. **Log Monitoring**: Monitor serial output for errors
@@ -184,17 +201,47 @@ Use a stable 3.3V power supply capable of 500mA or more.
 ### Custom Data Interval
 Change the data transmission frequency:
 ```cpp
-const unsigned long DATA_SEND_INTERVAL = 60000; // 1 minute
+// In loop() function, change the delay:
+delay(3000); // 3 seconds (current)
+// delay(5000); // 5 seconds
+// delay(10000); // 10 seconds
 ```
 
 ### Custom Buzzer Duration
 Adjust buzzer alert duration:
 ```cpp
-const unsigned long BUZZER_DURATION = 10000; // 10 seconds
+// In buzz() function:
+void buzz(int times, int duration = 700, int gap = 400) {
+  // duration = buzzer on time (ms)
+  // gap = buzzer off time (ms)
+}
 ```
 
 ### Multiple Devices
-For multiple gensets, change the device ID:
+For multiple gensets, change the device identification:
 ```cpp
-const String device_id = "ESP32_GENSET_002";
+// Add a device ID variable:
+const String device_id = "ESP32_GENSET_001";
+```
+
+### OLED Display Customization
+Modify the display layout in `displaySensorData()`:
+```cpp
+void displaySensorData(float temp, int fuel) {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  
+  // Customize text position and content
+  display.setCursor(0, 0);
+  display.print("Temp: ");
+  display.print(temp);
+  display.println(" C");
+  
+  display.print("Fuel: ");
+  display.print(fuel);
+  display.println(" %");
+  
+  display.display();
+}
 ``` 

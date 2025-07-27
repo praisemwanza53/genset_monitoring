@@ -5,17 +5,19 @@ A comprehensive IoT monitoring system for generator sets (gensets) using ESP32, 
 ## 🚀 Features
 
 ### Core Monitoring
-- **Real-time Sensor Data**: Temperature, fuel level, humidity, and location (by ESP32 IP geolocation)
+- **Real-time Sensor Data**: Temperature (LM75 I2C sensor) and fuel level (ultrasonic sensor)
 - **Live Dashboard**: Streamlit interface with real-time updates from the API server
 - **Alert System**: Configurable thresholds with buzzer notifications
-- **Data Visualization**: Interactive charts and maps
+- **Data Visualization**: Interactive charts and historical data
 - **AI Analysis**: Groq API integration for intelligent insights
 
 ### ESP32 Integration
 - **HTTP Communication**: RESTful API endpoints for data transmission
 - **Buzzer & Relay Control**: Remote activation for alerts and control
 - **WiFi Connectivity**: Automatic reconnection and status monitoring
-- **Sensor Support**: Temperature, fuel level, humidity sensors (geolocation by IP, not GPS)
+- **Local Web Server**: Built-in web interface for local control and monitoring
+- **OLED Display**: Real-time sensor data display
+- **Sensor Support**: LM75 temperature sensor (I2C) and ultrasonic fuel level sensor
 
 ### API Server
 - **Dedicated Endpoints**: Flask API server for ESP32 and dashboard communication
@@ -35,14 +37,7 @@ A comprehensive IoT monitoring system for generator sets (gensets) using ESP32, 
 CREATE TABLE sensor_data (
     timestamp TEXT PRIMARY KEY,
     fuel_level REAL,
-    temperature REAL,
-    humidity REAL,
-    latitude REAL,
-    longitude REAL,
-    city TEXT,
-    country TEXT,
-    ip TEXT,
-    notification_sent INTEGER DEFAULT 0
+    temperature REAL
 );
 ```
 
@@ -55,7 +50,7 @@ ESP32 Sensors → API Server (Flask) → SQLite Database → Streamlit Dashboard
 
 ### Communication Flow
 1. **ESP32** reads sensors and sends JSON data to the API server via HTTP POST.
-2. **API Server** receives, geolocates by sender IP, and stores data in SQLite.
+2. **API Server** receives and stores data in SQLite.
 3. **Dashboard** fetches latest data from the API server and displays it live.
 4. **Dashboard** can send relay/buzzer commands to the API server, which ESP32 fetches.
 
@@ -70,8 +65,9 @@ genset_monitoring/
 │   ├── components/        # UI components
 │   └── utils/             # Utility functions
 ├── ESP32_Genset_Monitor.ino  # ESP32 Arduino code
+├── arduino_genset/
+│   └── arduino_genset.ino # Arduino temperature sensor code
 ├── requirements.txt       # Python dependencies
-├── api_requirements.txt   # API server dependencies
 ├── logs/                  # Database and log files
 │   └── genset_data.db     # SQLite database
 └── data/                  # Additional data files
@@ -93,7 +89,6 @@ venv\Scripts\activate  # Windows
 
 # Install dependencies
 pip install -r requirements.txt
-pip install -r api_requirements.txt
 
 # Set environment variables (for AI)
 # Do NOT commit secrets! Use .env or Streamlit/Render secrets
@@ -122,10 +117,7 @@ streamlit run src/dashboard.py
 
 ```bash
 # Test API endpoints
-python test_api.py
-
-# Run comprehensive tests
-python src/simulate.py
+curl http://localhost:5000/health
 
 # Check database status
 python src/check_db.py
@@ -135,7 +127,7 @@ python src/check_db.py
 
 ### ESP32 Firmware: How It Works
 The ESP32 firmware (see `ESP32_Genset_Monitor.ino`) is responsible for:
-- Reading temperature (NTC thermistor) and fuel level (ultrasonic sensor)
+- Reading temperature (LM75 I2C sensor) and fuel level (ultrasonic sensor)
 - Displaying data on an OLED screen
 - Serving a local web interface for status and control
 - Sending sensor data to the API server via HTTP POST
@@ -155,45 +147,39 @@ The ESP32 firmware (see `ESP32_Genset_Monitor.ino`) is responsible for:
 - `/sensors` — Get current sensor readings (JSON)
 - `/notify` — Trigger buzzer alert
 
+### Arduino Temperature Sensor Code
+The `arduino_genset/arduino_genset.ino` file contains code for a frequency-based temperature sensor:
+- Uses interrupt-capable digital pin to count pulses
+- Calculates frequency and converts to temperature using calibration constants
+- Outputs temperature data via Serial
+
 ### Sensor Calibration & Calculations
 
-#### 1. Temperature (NTC Thermistor)
-- **Wiring:** NTC thermistor in a voltage divider with a 10kΩ series resistor.
-- **Analog Read:** Reads voltage at the divider using ADC (0–4095 scale).
-- **Calculation:**
-  - Converts ADC value to voltage:  
-    `voltage = adcValue * 3.3 / 4095`
-  - Calculates thermistor resistance:  
-    `resistance = (voltage * 10,000) / (3.3 - voltage)`
-  - Applies the Steinhart-Hart equation:
-    ```
-    steinhart = resistance / 10,000.0;
-    steinhart = log(steinhart);
-    steinhart /= 3950.0; // B coefficient
-    steinhart += 1.0 / (25.0 + 273.15); // 25°C nominal
-    steinhart = 1.0 / steinhart;
-    steinhart -= 273.15;
-    ```
-  - **Calibration:**
-    - The constants (10kΩ, 3950 B, 25°C nominal) are for a typical 10k NTC thermistor. For best accuracy, calibrate by comparing readings to a reference thermometer and adjusting the B value or nominal resistance as needed.
-    - If readings are off, measure resistance at a known temperature and update the constants.
+#### 1. Temperature (LM75 I2C Sensor)
+- **Wiring:** LM75 sensor connected via I2C (SDA: GPIO21, SCL: GPIO22)
+- **I2C Address:** 0x48 (default)
+- **Reading:** 16-bit temperature value with 0.5°C resolution
+- **Calculation:** 
+  - Raw value is shifted right by 7 bits
+  - Temperature = raw_value * 0.5°C
+- **Calibration:** LM75 is factory calibrated, but verify readings against reference thermometer
 
 #### 2. Fuel Level (Ultrasonic Sensor)
-- **Wiring:** TRIG and ECHO pins to ESP32, sensor mounted above fuel tank.
+- **Wiring:** TRIG pin to GPIO12, ECHO pin to GPIO14
 - **Measurement:**
-  - Sends a 10μs pulse, measures echo return time.
+  - Sends a 10μs pulse, measures echo return time
   - Converts time to distance:  
     `distance = duration * 0.034 / 2.0` (cm)
   - **Calibration:**
     - The code maps 10cm (full) to 40cm (empty):
       `fuelLevel = map(distance, 10, 40, 100, 0)`
-    - Adjust 10 and 40 to match your tank's actual full/empty distances.
-    - The result is rounded to the nearest 5% for stability.
-    - If the sensor reads out of range, 0% is reported.
+    - Adjust 10 and 40 to match your tank's actual full/empty distances
+    - The result is rounded to the nearest 5% for stability
+    - If the sensor reads out of range, 0% is reported
 
 #### 3. Buzzer & Relay
-- Buzzer is used for alerts (e.g., on WiFi connect, remote notification)
-- Relay can be toggled locally (web) or remotely (API command)
+- **Buzzer:** Connected to GPIO26, used for alerts (e.g., on WiFi connect, remote notification)
+- **Relay:** Connected to GPIO27, can be toggled locally (web) or remotely (API command)
 
 ### Data Flow & System Workflow
 
@@ -230,11 +216,11 @@ graph TD;
 
 ### Hardware Requirements
 - ESP32 development board
-- NTC thermistor (temperature sensor)
-- Ultrasonic sensor (fuel level)
+- LM75 temperature sensor (I2C)
+- Ultrasonic sensor (HC-SR04 or similar)
 - Buzzer for alerts
 - Relay for control
-- OLED display (optional)
+- OLED display (SSD1306, 128x64)
 
 ### Software Setup
 1. Install Arduino IDE
@@ -242,7 +228,9 @@ graph TD;
 3. Install required libraries:
    - WiFi
    - HTTPClient
+   - Wire (I2C)
    - Adafruit SSD1306 (for OLED)
+   - Adafruit GFX (for OLED)
 
 ### Configuration
 Update the ESP32 code with your WiFi and API server settings:
@@ -263,8 +251,37 @@ const char* api_server_url_cmds = "https://genset-monitoring.onrender.com/api/co
 #endif
 ```
 
-- **Geolocation is by IP address, not GPS.**
-- **A 4.7kΩ pull-up resistor is required on the NTC thermistor voltage divider if needed.**
+### Hardware Connections
+```
+LM75 Temperature Sensor (I2C):
+- VCC → 3.3V
+- GND → GND
+- SDA → GPIO21
+- SCL → GPIO22
+
+Ultrasonic Sensor:
+- VCC → 3.3V
+- GND → GND
+- TRIG → GPIO12
+- ECHO → GPIO14
+
+OLED Display (SSD1306):
+- VCC → 3.3V
+- GND → GND
+- SDA → GPIO21 (shared with LM75)
+- SCL → GPIO22 (shared with LM75)
+
+Buzzer:
+- VCC → 3.3V
+- GND → GND
+- Signal → GPIO26
+
+Relay:
+- VCC → 3.3V
+- GND → GND
+- Signal → GPIO27
+```
+
 - **See the [System Technical Overview & Sensor Calibration](#system-technical-overview--sensor-calibration) section above for details on sensor wiring, calibration, and calculations.**
 
 ## 🌐 Deployment Options
@@ -299,7 +316,7 @@ See `DEPLOYMENT_GUIDE.md` for detailed instructions.
 # Send sensor data
 curl -X POST http://localhost:5000/api/sensor-data \
   -H "Content-Type: application/json" \
-  -d '{"temperature": 25.5, "fuel_level": 75.2, "humidity": 60.1}'
+  -d '{"temperature": 25.5, "fuel_level": 75.2}'
 
 # Fetch latest sensor data
 curl http://localhost:5000/api/sensor-data
@@ -316,11 +333,11 @@ curl http://localhost:5000/api/commands
 
 ## 🔍 Monitoring Features
 
-- **Live sensor status**: Temperature, fuel, humidity
-- **Location tracking**: By IP geolocation
+- **Live sensor status**: Temperature and fuel level
 - **Alert system**: Visual and buzzer alerts
 - **Data tables and charts**: Historical and real-time
 - **AI insights**: Groq-powered analysis
+- **Local web interface**: Direct control via ESP32 web server
 
 ## 🚨 Troubleshooting
 
@@ -346,6 +363,11 @@ curl http://localhost:5000/api/commands
    - Verify SQLite file permissions
    - Run database health check: `python src/check_db.py`
 
+5. **Sensor Issues**
+   - **LM75:** Check I2C connections and address (default 0x48)
+   - **Ultrasonic:** Verify TRIG/ECHO connections and power supply
+   - **OLED:** Check I2C connections and address (default 0x3C)
+
 ### Debug Commands
 
 ```bash
@@ -367,6 +389,7 @@ curl http://localhost:5000/health
 - **Predictive analytics**: Trend prediction and anomaly detection
 - **Smart alerts**: Intelligent alert recommendations
 - **Data export**: CSV and JSON export capabilities
+- **Local web control**: Direct access to ESP32 for local monitoring
 
 ---
 
