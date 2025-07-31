@@ -239,9 +239,10 @@ if __name__ == '__main__':
     logger.info("  GET  /api/config - Get configuration")
     logger.info("  GET  /api/test - Test endpoint")
     
-    # Run the server
+    # Use PORT environment variable if set (for Render/Heroku compatibility)
+    port = int(os.environ.get("PORT", 5000))
     app.run(
         host='0.0.0.0',  # Allow external connections
-        port=5000,        # Default Flask port
+        port=port,        # Use dynamic port for cloud deployment
         debug=False       # Disable debug mode for production
-    ) 
+    )
